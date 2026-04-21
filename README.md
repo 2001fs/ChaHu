@@ -142,4 +142,4 @@ def dynamic_task_weight(val_accs, base_weights=[0.25, 0.25, 0.25, 0.25]):
 
 ## 训练效果如下所示
 
-![multitask_training_curves_resnet_20260421_133948](.\image\multitask_training_curves_resnet_20260421_133948.png)
+![multitask_training_curves_resnet_20260421_133948](image\multitask_training_curves_resnet_20260421_133948.png)
