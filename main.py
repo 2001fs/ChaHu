@@ -19,7 +19,7 @@ import time
 # ==================== 参数配置 ====================
 BATCH_SIZE = 64
 LEARNING_RATE = 3e-4
-NUM_EPOCHS = 100
+NUM_EPOCHS = 50
 IMAGE_SIZE = 224
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 TEST_SIZE = 0.2
