@@ -19,13 +19,13 @@ import time
 # ==================== 参数配置 ====================
 BATCH_SIZE = 64
 LEARNING_RATE = 3e-4
-NUM_EPOCHS = 10
+NUM_EPOCHS = 100
 IMAGE_SIZE = 224
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 TEST_SIZE = 0.2
 
 # ID筛选范围
-ID_START = 'JN000312'
+ID_START = 'JN000001'
 ID_END = 'JN009354'
 
 LR_STEP_SIZE = 15
@@ -206,7 +206,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         use_dynamic_weights: 是否使用动态权重调整
         weight_adjust_method: 权重调整方法
             - 'accuracy': 根据验证准确率调整
-            - 'hybrid': 混合准确率和样本数量
+            - 'hybrid': 包含历史状态的混合权重调整
     """
     train_losses = []
     val_losses = []
@@ -337,10 +337,9 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             if weight_adjust_method == 'accuracy':
                 task_weights = dynamic_task_weight(current_val_accs)
             elif weight_adjust_method == 'hybrid':
-                # 混合：70%基于准确率，30%基于样本数量
+                # acc_weights为动态任务权重，task_weights为包含acc_weights的历史状态，实现平滑过渡
                 acc_weights = dynamic_task_weight(current_val_accs)
-                sample_weights = getattr(train_model, 'sample_based_weights', [0.25, 0.25, 0.25, 0.25])
-                task_weights = [0.7 * a + 0.3 * s for a, s in zip(acc_weights, sample_weights)]
+                task_weights = [0.9 * a + 0.1 * s for a, s in zip(task_weights, acc_weights)]
         
         epoch_time = time.time() - start_time
         
@@ -364,16 +363,13 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
     
     return model, train_losses, val_losses, train_accs, val_accs
 
-# 测试函数（包含融合逻辑）
+# 测试函数
 def test_model(model, test_loader):
     model.eval()
     
     # 存储四个任务的预测结果
     all_preds = {'geometric': [], 'natural': [], 'flower': [], 'handle': []}
-    all_probs = {'geometric': [], 'natural': [], 'flower': [], 'handle': []}
     all_labels = {'geometric': [], 'natural': [], 'flower': [], 'handle': []}
-    
-    softmax = nn.Softmax(dim=1)
     
     with torch.no_grad():
         for images, labels in test_loader:
@@ -382,15 +378,13 @@ def test_model(model, test_loader):
             
             geo_out, nat_out, flo_out, han_out = model(images)
             
-            # 获取预测结果和概率
+            # 获取预测结果
             for name, out, lbl in zip(['geometric', 'natural', 'flower', 'handle'],
                                      [geo_out, nat_out, flo_out, han_out],
                                      [geo_labels, nat_labels, flo_labels, han_labels]):
                 _, pred = torch.max(out.data, 1)
-                prob = softmax(out)
                 
                 all_preds[name].extend(pred.cpu().numpy())
-                all_probs[name].extend(prob.cpu().numpy())
                 all_labels[name].extend(lbl.cpu().numpy())
     
     # 打印每个任务的准确率
@@ -401,34 +395,7 @@ def test_model(model, test_loader):
         task_accuracies[name] = acc
         print(f'{name}: {acc:.4f}')
     
-    # 融合逻辑：选择四个任务中概率最高的类型
-    print('\n=== 融合预测结果 ===')
-    fused_correct = 0
-    total_samples = len(all_labels['geometric'])
-    
-    for i in range(total_samples):
-        # 获取每个任务的最高概率和对应类型索引
-        max_prob = 0.0
-        best_type = None
-        
-        for name in ['geometric', 'natural', 'flower', 'handle']:
-            # 获取该样本在该任务上的最高概率
-            prob = np.max(all_probs[name][i])
-            if prob > max_prob:
-                max_prob = prob
-                best_type = name
-        
-        # 判断是否正确（使用该任务的真实标签）
-        if best_type is not None:
-            pred = all_preds[best_type][i]
-            true = all_labels[best_type][i]
-            if pred == true:
-                fused_correct += 1
-    
-    fused_accuracy = fused_correct / total_samples
-    print(f'融合后准确率: {fused_accuracy:.4f}')
-    
-    return task_accuracies, fused_accuracy
+    return task_accuracies
 
 # 绘制训练曲线
 def plot_training_curves(train_losses, val_losses, train_accs, val_accs):
@@ -651,7 +618,7 @@ def main():
     # 加载最佳模型进行测试
     print('\nLoading best model for testing...')
     model.load_state_dict(torch.load('multitask_best.pth'))
-    task_accuracies, fused_accuracy = test_model(model, test_loader)
+    task_accuracies = test_model(model, test_loader)
     
     # 保存最终模型
     torch.save(model.state_dict(), 'multitask_final.pth')
