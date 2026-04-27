@@ -44,11 +44,22 @@ ChaHu/
 ## 模型结构
 
 模型结构
-![image](image/resnet.png)
-本项目参考的基础模型为resnet，考虑到数据集有9000多张图片，小数据集易过拟合，同时兼顾训练效果，所以采用resnet34作为图像分类的基础模型。
+
+本项目参考的基础模型为resnet，考虑到数据集有9000多张图片，小数据集易过拟合，同时兼顾训练效果，所以采用resnet34作为图像分类的基础模型。![image](image/resnet.png)
+
+
+
+
+
+
 考虑到类间差异小：不同壶型（石瓢、仿古、德钟等）轮廓接近，主要靠细微曲线、口盖比例、流把角度区分。
 特征集中在纹理 / 色泽：紫砂泥料的颗粒质感、窑变色泽、包浆光泽是关键，这些信息分散在不同特征通道里
-resnet的卷积输出的所有特征通道权重相同，不会自动区分 “重要通道”（如纹理、边缘）和 “没用通道”（如背景噪声、冗余特征）。紫砂壶这种细节敏感、通道信息差异大的任务，ResNet 提取的特征判别力不足，容易学偏。给ResNet加上SE模块，通道加 “注意力”，自动放大纹理 / 色泽 / 轮廓通道权重，压低背景、反光、划痕等无效通道，特征更 “纯”、判别力更强。且SE作为轻量级模块，直接在 ResNet34的残差块后插入SE，不用改主体结构。
+resnet的卷积输出的所有特征通道权重相同，不会自动区分 “重要通道”（如纹理、边缘）和 “没用通道”（如背景噪声、冗余特征)。紫砂壶这种细节敏感、通道信息差异大的任务，ResNet 提取的特征判别力不足，容易学偏。给ResNet加上SE模块，通道加 “注意力”，自动放大纹理 / 色泽 / 轮廓通道权重，压低背景、反光、划痕等无效通道，特征更 “纯”、判别力更强。且SE作为轻量级模块，直接在 ResNet34的残差块后插入SE，不用改主体结构。
+
+![image](image/model_1.png)
+
+
+
 考虑到紫砂壶的器型差异靠轮廓特征，如整体比例、口盖线条、流把弧度需要大感受野、粗粒度特征。而有些特征是颗粒粗细、窑变斑点、光泽质感，需要小感受野、细粒度特征。所以采用多尺度特征.
 Inception 块：
 1×1：抓细微纹理、颜色、斑点
@@ -56,19 +67,17 @@ Inception 块：
 5×5：抓整体轮廓、口盖比例、器型大结构
 输出直接拼接：同时保留多尺度信息，特征更丰富、判别力更强
 
-本模型将resnet34中的第三层两个卷积conv 3×3，256通道改为inception 1×1 3×3 5×5 多尺度卷积.
-同时代码支持配置替换卷积,可以替换途中resnet34的conv2-5的卷积为 inception 多尺度卷积,代码如下
+![image](image/model_2.png)
 
-```python
-# ==================== 模型配置参数 ====================
-    # 每个层可独立配置为 'se' (SEBasicBlock) 或 'inception' (SEInceptionBasicBlock)
-    # 示例配置：仅在 layer3 (conv4_x) 使用 Inception
-    LAYER1_BLOCK = 'se'           # layer1 (conv2_x): 原始 SE 块
-    LAYER2_BLOCK = 'se'           # layer2 (conv3_x): 原始 SE 块
-    LAYER3_BLOCK = 'inception'    # layer3 (conv4_x): Inception 块（改进层）
-    LAYER4_BLOCK = 'se'           # layer4 (conv5_x): 原始 SE 块
-# ==================================================
-```
+本模型将resnet34中的第三层两个卷积conv 3×3，256通道改为inception 1×1 3×3 5×5 多尺度卷积.
+
+
+
+整体结构如下
+
+![image](image/model_all.png)
+
+
 
 ### 使用模型 SE-ResNet-34
 
@@ -139,6 +148,21 @@ python main.py
 | TEST_SIZE     | 0.2    | 测试集比例     |
 | LR_STEP_SIZE  | 15     | 学习率衰减步长 |
 | LR_GAMMA      | 0.5    | 学习率衰减系数 |
+
+同时代码支持配置替换卷积,可以替换途中resnet34的conv2-5的卷积为 inception 多尺度卷积,代码如下
+
+```python
+# ==================== 模型配置参数 ====================
+    # 每个层可独立配置为 'se' (SEBasicBlock) 或 'inception' (SEInceptionBasicBlock)
+    # 示例配置：仅在 layer3 (conv4_x) 使用 Inception
+    LAYER1_BLOCK = 'se'           # layer1 (conv2_x): 原始 SE 块
+    LAYER2_BLOCK = 'se'           # layer2 (conv3_x): 原始 SE 块
+    LAYER3_BLOCK = 'inception'    # layer3 (conv4_x): Inception 块（改进层）
+    LAYER4_BLOCK = 'se'           # layer4 (conv5_x): 原始 SE 块
+# ==================================================
+```
+
+
 
 ### 模型输出
 
