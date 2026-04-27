@@ -88,14 +88,17 @@ Inception 块：
 
 本模型将resnet34中的第三层两个卷积conv 3×3，256通道改为inception 1×1 3×3 5×5 多尺度卷积.
 同时代码支持配置替换卷积,可以替换途中resnet34的conv2-5的卷积为 inception 多尺度卷积,代码如下
-\# ==================== 模型配置参数 ====================
-    \# 每个层可独立配置为 'se' (SEBasicBlock) 或 'inception' (SEInceptionBasicBlock)
-    \# 示例配置：仅在 layer3 (conv4_x) 使用 Inception
+
+```python
+# ==================== 模型配置参数 ====================
+    # 每个层可独立配置为 'se' (SEBasicBlock) 或 'inception' (SEInceptionBasicBlock)
+    # 示例配置：仅在 layer3 (conv4_x) 使用 Inception
     LAYER1_BLOCK = 'se'           # layer1 (conv2_x): 原始 SE 块
     LAYER2_BLOCK = 'se'           # layer2 (conv3_x): 原始 SE 块
     LAYER3_BLOCK = 'inception'    # layer3 (conv4_x): Inception 块（改进层）
     LAYER4_BLOCK = 'se'           # layer4 (conv5_x): 原始 SE 块
-\# ==================================================
+# ==================================================
+```
 
 ### 使用模型 SE-ResNet-34
 
@@ -125,7 +128,7 @@ Inception 块：
 
 关键代码：
 
-```
+```python
 # 根据验证准确率动态调整任务权重
 def dynamic_task_weight(val_accs, base_weights=[0.25, 0.25, 0.25, 0.25]):
     # 表现差的任务分配更高权重
