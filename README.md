@@ -1,4 +1,4 @@
-<img width="2133" height="921" alt="image" src="https://github.com/user-attachments/assets/249303fc-1bae-4977-ab78-6d8ec07eb536" /># **ChaHu - 紫砂壶图像分类数据集与多任务学习模型**
+像分类数据集与多任务学习模型**
 
 
 ## 项目简介
@@ -74,7 +74,7 @@ ChaHu/
 ## 模型设计
 
 模型结构
-
+![image](image/resnet.png)
 
 ### 使用模型 SE-ResNet-34
 
