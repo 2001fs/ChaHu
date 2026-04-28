@@ -108,7 +108,7 @@ python test_model.py # 测试模型
 
    * 提取紫砂壶有效区域效果图如下所示
 
-   ![image](E:\download_github_desktop\项目\Chahu\ChaHu\README\test_output.png)
+   ![image](image/test_output.png)
 
 2. 运行 `main.py`，完成**数据集划分、模型构建、多任务训练**全部流程：
 
@@ -161,26 +161,41 @@ python test_model.py # 测试模型
 - `model_save/multitask_best.pth` - 最佳验证准确率模型
 - `model_save/multitask_final.pth` - 最终训练模型
 - `image_save/multitask_training_curves_resnet_*.png` - 训练曲线图
+- `vis_results/best_correct_*.png` - 测试集结果图
 
 ## 实验结果 
 
 * 训练效果如下所示
 
-![image](image/multitask_training_curves_resnet_20260421_133948.png)
+![image](image_save/multitask_training_curves_resnet_20260428_134313.png)
 
 * 测试结果
 
+  | 紫砂壶分类头 | 任务准确率 |
+  | ------------ | ---------- |
+  | **几何形状** | **0.540**  |
+  | **自然形状** | **0.837**  |
+  | **花卉类别** | **0.887**  |
+  | **把手类型** | **0.964**  |
 
+  由于**几何形状**分类头包含紫砂壶壶型最多，且对于一些相似形状茶壶较难分辨，所以任务准确率最低。**把手类型**分类头包含紫砂壶壶型最少，且容易分辨，所以任务准确率最高。
 
-
+* 下面是抽取的紫砂壶的各类别概率分布
+* **几何形状类：**
 
 
 
 ![image](image/best_correct_geometric.png)
 
+* **自然形状类：**
+
 ![image](image/best_correct_natural.png)
 
+* **花卉类别：**
+
 ![image](image/best_correct_flower.png)
+
+* **把手类型：**
 
 ![image](image/best_correct_handle.png)
 
@@ -250,12 +265,12 @@ val_test_transform = transforms.Compose([
 ])
 ```
 
-### AdamW优化器
+### AdamW优化器+余弦退火
 
 ```python
 # 优化器
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
-scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=LR_STEP_SIZE, gamma=LR_GAMMA)
+optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY) # AdamW优化器
+scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=LR_STEP_SIZE, gamma=LR_GAMMA) # 余弦退火
 ```
 

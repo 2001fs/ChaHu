@@ -31,7 +31,7 @@ if not os.path.exists('model_save/label_mapping.pkl'):
     raise FileNotFoundError("请先运行 train.py")
 if not os.path.exists('data_split/test_dataset.parquet'):
     raise FileNotFoundError("请先运行 train.py")
-if not os.path.exists('model_save/multitask_inception4_best.pth'):
+if not os.path.exists('model_save/multitask_best.pth'):
     raise FileNotFoundError("请先运行 train.py")
 
 # ==================== 全局参数 ====================
@@ -373,7 +373,7 @@ def main():
         NUM_GEOMETRIC_CLASSES, NUM_NATURAL_CLASSES, NUM_FLOWER_CLASSES, NUM_HANDLE_CLASSES,
         LAYER1_BLOCK, LAYER2_BLOCK, LAYER3_BLOCK, LAYER4_BLOCK
     ).to(DEVICE)
-    model.load_state_dict(torch.load('model_save/multitask_inception4_best.pth', map_location=DEVICE))
+    model.load_state_dict(torch.load('model_save/multitask_best.pth', map_location=DEVICE))
     print("✅ 模型加载完成")
 
     test_model(model, dl)
