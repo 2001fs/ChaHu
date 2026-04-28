@@ -67,9 +67,11 @@ Inception 块：
 5×5：抓整体轮廓、口盖比例、器型大结构
 输出直接拼接：同时保留多尺度信息，特征更丰富、判别力更强
 
+本模型将resnet34中的第三层两个卷积conv 3×3，256通道改为inception 1×1 3×3 5×5 多尺度卷积.
+
 ![image](image/model_2.png)
 
-本模型将resnet34中的第三层两个卷积conv 3×3，256通道改为inception 1×1 3×3 5×5 多尺度卷积.
+
 
 
 
@@ -120,6 +122,10 @@ python main.py
 \```
 
 1. 运行 `process.py`，通过掩码提取紫砂壶图像有效区域，处理后在 `process` 目录下生成三个新文件：`CN-00000-of-00003-new.parquet`、`CN-00001-of-00003-new.parquet`、`CN-00002-of-00003-new.parquet`。
+
+   提取紫砂壶有效区域效果图如下所示
+
+   ![image](image/test_output.png)
 
 2. 运行 `main.py`，完成**数据集划分、模型构建、多任务训练**全部流程：
 
