@@ -1,9 +1,9 @@
-# **ChaHu - 紫砂壶图像分类数据集与多任务学习模型**
+# **基于ChaHu的几何性质分类模型**
 
 
 ## 项目简介
 
-ChaHu 是一个专注于紫砂壶图像分类的数据集和深度学习项目。该项目包含：
+本项目是一个专注于紫砂壶图像分类的数据集和深度学习项目。该项目包含：
 - **大规模紫砂壶图像数据集**：包含超过9000张紫砂壶图像及对应的mask遮罩
 - **多任务学习模型**：基于SE-ResNet-34动态配置inception多尺度卷积，实现四个不同角度（几何形状、自然形状、花卉类型、把手类型）紫砂壶类型分类
 
@@ -50,59 +50,43 @@ ChaHu/
 ```
 ## 模型结构
 
-* 本项目参考的基础模型为Resnet，考虑到数据集有9000多张图片，小数据集易过拟合，同时兼顾训练效果，所以采用Resnet34作为图像分类的基础模型。
+* 本项目参考的基础模型为ResNet，考虑到数据集有9000多张图片，小数据集易过拟合，同时需要兼顾训练效果，网络需具有一定深度，故采用ResNet34作为图像分类的基础模型。
 
-  下面是Restnet结构示意图：
+  下面是ResNet结构示意图：
 
 ![image](image/resnet.png)
 
 
 
-* 加入SE注意力模块
-* 考虑到类间差异小：不同壶型（石瓢、仿古、德钟等）轮廓接近，主要靠细微曲线、口盖比例、流把角度区分。
+* **加入SE注意力模块**，记上图中ResNet的conv2-5为layer1-4，SE添加在ResNet的layer1-4层，共4层SE
+* 加入SE模块原因：考虑到茶壶类间差异小：不同壶型（石瓢、仿古、德钟等）轮廓接近，主要靠细微曲线、口盖比例、流把角度区分。
 
 * 特征集中在纹理 / 色泽：紫砂泥料的颗粒质感、窑变色泽、包浆光泽，这些信息分散在不同特征通道里。
-* resnet的卷积输出的所有特征通道权重相同，不会自动区分 “重要通道”（如纹理、边缘）和 “没用通道”（如背景噪声、冗余特征)。紫砂壶这种细节敏感、通道信息差异大的任务，ResNet 提取的特征判别力不足。给ResNet加上SE模块，通道“注意力”，自动放大纹理 / 色泽 / 轮廓通道权重，压低背景、反光、划痕等无效通道。且SE作为轻量级模块，直接在 ResNet34后插入SE，不用改主体结构。下面是resnet conv2,3,5结构示意图：
+* ResNet的卷积输出的所有特征通道权重相同，不会自动区分 “重要通道”（如纹理、边缘）和 “没用通道”（如背景噪声、冗余特征)。紫砂壶分类这种细节敏感、通道信息差异大的任务，ResNet 提取的特征判别力不足。给ResNet加上SE模块，通道“注意力”，自动放大纹理 / 色泽 / 轮廓通道权重，压低背景、反光、划痕等无效通道。且SE作为轻量级模块，直接在 ResNet34后插入SE，不用改主体结构。
 
-![image](image/model_1.png)
+* **借鉴GoogLenet的inception模块**，将ResNet的layer3改为inception卷积并行融合模块。
 
+* 考虑到紫砂壶的器型差异靠轮廓特征，如整体比例、口盖线条、流把弧度需要大感受野、粗粒度特征。而有些特征是颗粒粗细、窑变斑点、光泽质感，需要小感受野、细粒度特征。所以采用多尺度特征。
 
+* 考虑到ResNet浅层主要做边缘、纹理、基础特征提取，而且浅层特征图尺寸大，多分支计算量开销会被放大，性价比低。
 
-* 借鉴GoogLenet的inception模块
-* 考虑到紫砂壶的器型差异靠轮廓特征，如整体比例、口盖线条、流把弧度需要大感受野、粗粒度特征。而有些特征是颗粒粗细、窑变斑点、光泽质感，需要小感受野、细粒度特征。所以采用多尺度特征.
+  中深层的特征图尺寸适中，通道数（256）也足够支撑多分支并行。这里的特征已经有一定语义信息，多分支可以帮模型捕捉更丰富的上下文和不同尺度的语义关联，对分类、检测等任务提升明显。所以选择将ResNet的layer3改为inception卷积并行融合模块。
+
 * 添加Inception 块：
   1×1：抓细微纹理、颜色、斑点
   3×3：抓局部边缘、小弧度、流把转折
   5×5：抓整体轮廓、口盖比例、器型大结构
-  输出直接拼接：同时保留多尺度信息，特征更丰富、判别力更强
+  输出直接拼接，同时保留多尺度信息，特征更丰富、判别力更强
 
-* 本模型将resnet34中的第三层两个卷积conv 3×3通道改为conv 1×1 3×3 5×5 多尺度卷积。池化后用 1×1 卷积调整通道，保证和其他分支输出通道数一致。
+* 本模型将ResNet中的layer两个卷积conv 3×3改为conv 1×1， 3×3， 5×5 多尺度卷积。池化后用 1×1 卷积调整通道，保证和其他分支输出通道数一致。
 
-  下面是resnet经过改造的conv4结构示意图：
+* **模型整体结构如下**
 
-![image](image/model_2.png)
-
-
-
-
-
-* 模型整体结构如下
-
-![image](image/model_all.png)
+![image](image/model_overall.png)
 
 
 
 ## 训练步骤
-
-\```bash
-
-python process.py # 提取紫砂壶图像有效区域
-
-python main.py # 训练模型
-
-python test_model.py # 测试模型
-
-\```
 
 1. 运行 `process.py`，通过掩码提取紫砂壶图像有效区域，处理后在 `process` 目录下生成三个新文件：`CN-00000-of-00003-new.parquet`、`CN-00001-of-00003-new.parquet`、`CN-00002-of-00003-new.parquet`。
 
@@ -139,7 +123,7 @@ python test_model.py # 测试模型
 | LR_STEP_SIZE  | 15     | 学习率衰减步长 |
 | LR_GAMMA      | 0.5    | 学习率衰减系数 |
 
-* 同时代码支持配置替换卷积,可以替换途中resnet34的conv2-5的卷积为 inception 多尺度卷积,代码如下
+* 同时代码支持配置替换卷积,可以替换途中ResNet34的layer1-4的卷积为 inception 多尺度卷积,代码如下
 
 ```python
 # ==================== 模型配置参数 ====================
@@ -185,19 +169,35 @@ python test_model.py # 测试模型
 
 
 
-![image](image/best_correct_geometric.png)
+![image](vis_results/best_correct_geometric_1.png)
+
+![image](vis_results/best_correct_geometric_2.png)
+
+![image](vis_results/best_correct_geometric_3.png)
 
 * **自然形状类：**
 
-![image](image/best_correct_natural.png)
+![image](vis_results/best_correct_natural_1.png)
+
+![image](vis_results/best_correct_natural_2.png)
+
+![image](vis_results/best_correct_natural_3.png)
 
 * **花卉类别：**
 
-![image](image/best_correct_flower.png)
+![image](vis_results/best_correct_flower_1.png)
+
+![image](vis_results/best_correct_flower_2.png)
+
+![image](vis_results/best_correct_flower_3.png)
 
 * **把手类型：**
 
-![image](image/best_correct_handle.png)
+![image](vis_results/best_correct_handle_1.png)
+
+![image](vis_results/best_correct_handle_2.png)
+
+![image](vis_results/best_correct_handle_3.png)
 
 ## 核心代码说明
 

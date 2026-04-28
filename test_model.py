@@ -44,6 +44,9 @@ LAYER2_BLOCK = 'se'
 LAYER3_BLOCK = 'inception'
 LAYER4_BLOCK = 'se'
 
+# 每个任务需要保存的样本数量（3个不同类别）
+SAMPLE_NUM_PER_TASK = 3
+
 # ==================== 加载标签映射 ====================
 with open('model_save/label_mapping.pkl', 'rb') as f:
     label_mapping = pickle.load(f)
@@ -209,55 +212,63 @@ def denormalize(tensor):
     img = img.permute(1,2,0).numpy()
     return np.clip(img, 0, 1)
 
-def plot_best_image_with_probs(img_tensor, probs, true_label, pred_label, idx_to_name, task_name):
+def plot_best_image_with_probs(img_tensor, probs, true_label, pred_label, idx_to_name, task_name, sample_idx):
     img = denormalize(img_tensor)
     probs = probs.cpu().numpy()
     class_names = [idx_to_name[i] for i in range(len(probs))]
     true_cls = idx_to_name[true_label]
     pred_cls = idx_to_name[pred_label]
 
-    # -------------------------- 核心调整 --------------------------
-    plt.figure(figsize=(20, 20))  
+    plt.figure(figsize=(40, 10))  
 
+    # 左图：原图
     plt.subplot(1, 2, 1)
     plt.imshow(img)
     plt.axis('off')
     plt.title(f'真实标签：{true_cls}\n预测标签：{pred_cls}',
               fontproperties=chinese_font, fontsize=14)
 
+    # 右图：纵向柱状图 + 柱子标数字
     plt.subplot(1, 2, 2)
-    y_pos = np.arange(len(class_names))
+    x_pos = np.arange(len(class_names))
+    bars = plt.bar(x_pos, probs, color='#4285F4', width=0.6)
 
-    plt.barh(y_pos, probs, color='#4285F4', height=0.4)
+    # 柱子顶部标概率（保留3位小数）
+    for bar in bars:
+        h = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2., h + 0.01,
+                 f'{h:.3f}', ha='center', va='bottom', fontsize=9)
 
-    # 调整 y 轴间距
-    plt.yticks(y_pos, class_names, fontproperties=chinese_font, fontsize=10)
-    plt.ylim(-0.5, len(class_names) - 0.5)  # 强制上下边界，让间距均匀
-
-    # 加大整体间距
-    plt.tight_layout(pad=8.0)
-
-    plt.xlabel('类别概率', fontproperties=chinese_font, fontsize=12)
+    plt.xticks(x_pos, class_names, fontproperties=chinese_font, fontsize=10, rotation=45)
+    plt.xlabel('类别', fontproperties=chinese_font, fontsize=12)
+    plt.ylabel('预测概率', fontproperties=chinese_font, fontsize=12)
     plt.title('各类别预测概率分布', fontproperties=chinese_font, fontsize=14)
 
+    plt.tight_layout(pad=4.0)
     os.makedirs('vis_results', exist_ok=True)
-    save_path = f'vis_results/best_correct_{task_name}.png'
+    save_path = f'vis_results/best_correct_{task_name}_{sample_idx+1}.png'
     plt.savefig(save_path, dpi=200, bbox_inches='tight')
     plt.close()
-    print(f'✅ 【{task_name}】已保存（间距已拉大）')
+    print(f'✅ 【{task_name}】第{sample_idx+1}个样本（柱子带数字）已保存')
 
-# ==================== 筛选：真实=预测 && 不是其他类 ====================
+# ==================== 筛选：真实=预测+非其他+每个任务3个【不同类别】样本 ====================
 def find_target_best_images(model, test_loader):
     model.eval()
+    # 存储：样本列表 + 已选类别集合（保证不重复）
     best = {
-        "geometric": {"max_p": 0.0, "img": None, "true": -1, "pred": -1, "probs": None},
-        "natural":   {"max_p": 0.0, "img": None, "true": -1, "pred": -1, "probs": None},
-        "flower":    {"max_p": 0.0, "img": None, "true": -1, "pred": -1, "probs": None},
-        "handle":    {"max_p": 0.0, "img": None, "true": -1, "pred": -1, "probs": None},
+        "geometric": {"samples": [], "used_cls": set()},
+        "natural":   {"samples": [], "used_cls": set()},
+        "flower":    {"samples": [], "used_cls": set()},
+        "handle":    {"samples": [], "used_cls": set()},
     }
 
     with torch.no_grad():
         for imgs, labels, _ in test_loader:
+            # 全部收集满直接退出
+            all_full = all(len(best[t]["samples"]) >= SAMPLE_NUM_PER_TASK for t in best)
+            if all_full:
+                break
+                
             imgs = imgs.to(DEVICE)
             gt, nt, ft, ht = [x.to(DEVICE) for x in labels]
             go, no, fo, ho = model(imgs)
@@ -267,54 +278,47 @@ def find_target_best_images(model, test_loader):
             fp = torch.softmax(fo, dim=1)
             hp = torch.softmax(ho, dim=1)
 
-            for i in range(imgs.size(0)):
-                # 1. geometric：预测正确 + 非其他
-                t_geo = gt[i].item()
-                p_geo = gp[i].argmax().item()
-                if t_geo == p_geo and t_geo != other_geo_id:
-                    cur_p = gp[i, p_geo].item()
-                    if cur_p > best["geometric"]["max_p"]:
-                        best["geometric"]["max_p"] = cur_p
-                        best["geometric"]["img"]   = imgs[i]
-                        best["geometric"]["true"]  = t_geo
-                        best["geometric"]["pred"]  = p_geo
-                        best["geometric"]["probs"] = gp[i]
+            batch_size = imgs.size(0)
+            for i in range(batch_size):
+                # 1. 几何：3个不同类别
+                if len(best["geometric"]["samples"]) < SAMPLE_NUM_PER_TASK:
+                    t_geo = gt[i].item()
+                    p_geo = gp[i].argmax().item()
+                    if t_geo == p_geo and t_geo != other_geo_id and t_geo not in best["geometric"]["used_cls"]:
+                        best["geometric"]["used_cls"].add(t_geo)
+                        best["geometric"]["samples"].append({
+                            "img": imgs[i], "true": t_geo, "pred": p_geo, "probs": gp[i]
+                        })
 
-                # 2. natural：预测正确 + 非其他
-                t_nat = nt[i].item()
-                p_nat = np_[i].argmax().item()
-                if t_nat == p_nat and t_nat != other_nat_id:
-                    cur_p = np_[i, p_nat].item()
-                    if cur_p > best["natural"]["max_p"]:
-                        best["natural"]["max_p"] = cur_p
-                        best["natural"]["img"]   = imgs[i]
-                        best["natural"]["true"]  = t_nat
-                        best["natural"]["pred"]  = p_nat
-                        best["natural"]["probs"] = np_[i]
+                # 2. 自然：3个不同类别
+                if len(best["natural"]["samples"]) < SAMPLE_NUM_PER_TASK:
+                    t_nat = nt[i].item()
+                    p_nat = np_[i].argmax().item()
+                    if t_nat == p_nat and t_nat != other_nat_id and t_nat not in best["natural"]["used_cls"]:
+                        best["natural"]["used_cls"].add(t_nat)
+                        best["natural"]["samples"].append({
+                            "img": imgs[i], "true": t_nat, "pred": p_nat, "probs": np_[i]
+                        })
 
-                # 3. flower：预测正确 + 非其他
-                t_flw = ft[i].item()
-                p_flw = fp[i].argmax().item()
-                if t_flw == p_flw and t_flw != other_flw_id:
-                    cur_p = fp[i, p_flw].item()
-                    if cur_p > best["flower"]["max_p"]:
-                        best["flower"]["max_p"] = cur_p
-                        best["flower"]["img"]   = imgs[i]
-                        best["flower"]["true"]  = t_flw
-                        best["flower"]["pred"]  = p_flw
-                        best["flower"]["probs"] = fp[i]
+                # 3. 花卉：3个不同类别
+                if len(best["flower"]["samples"]) < SAMPLE_NUM_PER_TASK:
+                    t_flw = ft[i].item()
+                    p_flw = fp[i].argmax().item()
+                    if t_flw == p_flw and t_flw != other_flw_id and t_flw not in best["flower"]["used_cls"]:
+                        best["flower"]["used_cls"].add(t_flw)
+                        best["flower"]["samples"].append({
+                            "img": imgs[i], "true": t_flw, "pred": p_flw, "probs": fp[i]
+                        })
 
-                # 4. handle：预测正确 + 非其他
-                t_hdl = ht[i].item()
-                p_hdl = hp[i].argmax().item()
-                if t_hdl == p_hdl and t_hdl != other_hdl_id:
-                    cur_p = hp[i, p_hdl].item()
-                    if cur_p > best["handle"]["max_p"]:
-                        best["handle"]["max_p"] = cur_p
-                        best["handle"]["img"]   = imgs[i]
-                        best["handle"]["true"]  = t_hdl
-                        best["handle"]["pred"]  = p_hdl
-                        best["handle"]["probs"] = hp[i]
+                # 4. 把手：3个不同类别
+                if len(best["handle"]["samples"]) < SAMPLE_NUM_PER_TASK:
+                    t_hdl = ht[i].item()
+                    p_hdl = hp[i].argmax().item()
+                    if t_hdl == p_hdl and t_hdl != other_hdl_id and t_hdl not in best["handle"]["used_cls"]:
+                        best["handle"]["used_cls"].add(t_hdl)
+                        best["handle"]["samples"].append({
+                            "img": imgs[i], "true": t_hdl, "pred": p_hdl, "probs": hp[i]
+                        })
 
     # 绘图
     task_list = [
@@ -324,15 +328,16 @@ def find_target_best_images(model, test_loader):
         ("handle",    handle_idx_to_name)
     ]
     for task, idx_map in task_list:
-        info = best[task]
-        if info["img"] is not None:
-            plot_best_image_with_probs(
-                info["img"], info["probs"],
-                info["true"], info["pred"],
-                idx_map, task
-            )
+        samples = best[task]["samples"]
+        if len(samples) > 0:
+            for idx, sample in enumerate(samples):
+                plot_best_image_with_probs(
+                    sample["img"], sample["probs"],
+                    sample["true"], sample["pred"],
+                    idx_map, task, idx
+                )
         else:
-            print(f"❌ 【{task}】未找到满足条件样本")
+            print(f"❌ 【{task}】未找到足够不重复类别的满足条件样本")
 
 # ==================== 测试准确率 ====================
 def test_model(model, loader):
@@ -367,7 +372,7 @@ def main():
         transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
     ])
     ds = TeapotDataset(test_df, transform)
-    dl = DataLoader(ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+    dl = DataLoader(ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
 
     model = MultiTaskConfigurableResNet34(
         NUM_GEOMETRIC_CLASSES, NUM_NATURAL_CLASSES, NUM_FLOWER_CLASSES, NUM_HANDLE_CLASSES,
@@ -377,7 +382,11 @@ def main():
     print("✅ 模型加载完成")
 
     test_model(model, dl)
-    print("\n 筛选条件：真实标签 == 预测标签 且 标签不为【其他】")
+    print(f"\n 筛选条件：")
+    print(f"1. 真实标签 = 预测标签")
+    print(f"2. 排除【其他】类别")
+    print(f"3. 每个分类头选出{SAMPLE_NUM_PER_TASK}个**完全不同类别**的样本")
+    print(f"4. 概率图：纵向柱状图 + 柱子顶部标概率数字")
     find_target_best_images(model, dl)
     print("\n 执行完毕，图片保存至 vis_results 文件夹")
 
