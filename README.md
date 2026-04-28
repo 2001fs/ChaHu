@@ -117,7 +117,7 @@ ChaHu/
 | ------------- | ------ | -------------- |
 | BATCH_SIZE    | 64     | 批次大小       |
 | LEARNING_RATE | 3e-4   | 学习率         |
-| NUM_EPOCHS    | 10     | 训练轮数       |
+| NUM_EPOCHS    | 50     | 训练轮数       |
 | IMAGE_SIZE    | 224    | 图像尺寸       |
 | TEST_SIZE     | 0.2    | 测试集比例     |
 | LR_STEP_SIZE  | 15     | 学习率衰减步长 |
